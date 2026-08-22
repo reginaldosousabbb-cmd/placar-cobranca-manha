@@ -228,7 +228,7 @@
     color:var(--cream);
     padding:2px 0;
     min-width:60px;
-    max-width:130px;
+    max-width:170px;
     cursor:default;
   }
   .name:focus{outline:none;}
@@ -478,16 +478,17 @@
 </div>
 
 <script>
-const nomes = ["Carla R","Daiane F","Dayane F","Eduardo B","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B","Wanessa M"];
+const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Eduardo B","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B","Wanessa M"];
 
 // ---- CONFIGURAÇÃO DO ADMIN (só quem edita este arquivo mexe aqui) ----
 // Cole aqui o link CSV publicado da aba "Resumo por Operador" do Painel Central.
 // Os colaboradores NÃO veem nem conseguem editar este link — só o botão "Atualizar agora".
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtDWGRMhofmsrMK8srGX2xEJMhYa-JrNBdCfV4dECK4e7xhCycs7chNMqXzuHHVsQsi4muyvQ4NpEF/pub?gid=365163685&single=true&output=csv";
-// Cole aqui o link CSV publicado da aba "Histórico Consolidado" do Painel Central.
+// Cole aqui o link CSV publicado da aba "Histórico Consolidado" do Painel Central DA MANHÃ
+// (ainda não existe — o antigo apontava por engano pro histórico da tarde).
 // Publique especificamente essa aba (Arquivo > Compartilhar > Publicar na Web > CSV).
 // Deixe como "" (vazio) que o seletor "Ver dia" fica com só a opção "Hoje", sem dar erro.
-const CSV_URL_HIST = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaQGrQ3oCX3AXj0LiHcfMbKSBANM8BD2bpoICo5jbPmJZlKdI9y9_wzLmWHzDhyxCAgR88WxcnBrbb/pub?gid=552872114&single=true&output=csv";
+const CSV_URL_HIST = "";
 // -----------------------------------------------------------------------
 
 const lanesEl = document.getElementById('lanes');
