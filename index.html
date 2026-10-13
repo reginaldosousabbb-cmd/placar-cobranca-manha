@@ -97,6 +97,7 @@
     font-size:13px;
   }
   .params select:focus{outline:2px solid var(--gold);}
+  .params input[type=date]{color-scheme:dark;}
   .hist-banner{
     display:none;
     margin-top:10px;
@@ -430,10 +431,9 @@
       <label>📅 <input type="text" id="dataInput" value=""></label>
       <label>🎯 Meta/pessoa R$ <input type="number" id="metaInput" value="1923" step="1" readonly></label>
       <label>🕐 Ver dia
-        <select id="dateSelect">
-          <option value="hoje">Hoje (ao vivo)</option>
-        </select>
+        <input type="date" id="dateSelect">
       </label>
+      <button class="sync-btn" id="backLiveBtn" style="display:none;">🔴 Voltar ao vivo</button>
     </div>
     <div class="sync-banner">
       <span class="sync-dot" id="syncDot"></span>
@@ -446,7 +446,7 @@
   <div class="thermo-card">
     <div class="thermo-top">
       <span class="thermo-label">🌡️ Termômetro da Equipe</span>
-      <span class="thermo-values" id="thermoValues"><b>R$ 0</b> de R$ 13.461</span>
+      <span class="thermo-values" id="thermoValues"><b>R$ 0</b> de R$ 24.999</span>
     </div>
     <div class="thermo-track">
       <div class="thermo-fill" id="thermoFill" style="width:0%;"></div>
@@ -484,8 +484,7 @@ const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Eduardo B","Gabriela 
 // Cole aqui o link CSV publicado da aba "Resumo por Operador" do Painel Central.
 // Os colaboradores NÃO veem nem conseguem editar este link — só o botão "Atualizar agora".
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtDWGRMhofmsrMK8srGX2xEJMhYa-JrNBdCfV4dECK4e7xhCycs7chNMqXzuHHVsQsi4muyvQ4NpEF/pub?gid=365163685&single=true&output=csv";
-// Cole aqui o link CSV publicado da aba "Histórico Consolidado" do Painel Central DA MANHÃ
-// (ainda não existe — o antigo apontava por engano pro histórico da tarde).
+// Cole aqui o link CSV publicado da aba "Histórico Consolidado" do Painel Central DA MANHÃ.
 // Publique especificamente essa aba (Arquivo > Compartilhar > Publicar na Web > CSV).
 // Deixe como "" (vazio) que o seletor "Ver dia" fica com só a opção "Hoje", sem dar erro.
 const CSV_URL_HIST = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtDWGRMhofmsrMK8srGX2xEJMhYa-JrNBdCfV4dECK4e7xhCycs7chNMqXzuHHVsQsi4muyvQ4NpEF/pub?gid=1539714785&single=true&output=csv";
@@ -813,6 +812,19 @@ let histRowsCache = null; // [{data, colaborador, negociado, recebido, meta, pct
 let liveInterval = null;
 let viewingHistory = false;
 
+// Aceita data como 2026-10-13, 13/10/2026 ou 13/10/26 e devolve sempre 2026-10-13
+function normDate(raw){
+  const s = String(raw || '').trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m){
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
+  return s;
+}
+
 async function fetchHistCSV(){
   if (!CSV_URL_HIST || !CSV_URL_HIST.startsWith('http')) return [];
   const bust = CSV_URL_HIST.includes('?') ? '&' : '?';
@@ -831,7 +843,7 @@ async function fetchHistCSV(){
     const row = rows[r];
     if (!row || !row[dataIdx] || !row[colabIdx]) continue;
     out.push({
-      data: row[dataIdx].trim(),
+      data: normDate(row[dataIdx]),
       colaborador: row[colabIdx].trim(),
       negociado: parseBRNumber(row[negIdx])
     });
@@ -846,24 +858,18 @@ async function populateDateSelect(){
     histRowsCache = [];
   }
   if (!histRowsCache || histRowsCache.length === 0) return;
-  // datas únicas, na ordem em que aparecem, mais recentes por último — invertemos pra mostrar mais recente primeiro
-  const seen = new Set();
-  const datas = [];
-  histRowsCache.forEach(r => {
-    if (!seen.has(r.data)){ seen.add(r.data); datas.push(r.data); }
-  });
-  datas.reverse();
-  datas.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d;
-    opt.textContent = d;
-    dateSelect.appendChild(opt);
-  });
+  // define o intervalo do calendário com base nas datas que realmente existem no histórico
+  const datas = histRowsCache.map(r => r.data).filter(Boolean).sort();
+  if (datas.length){
+    dateSelect.min = datas[0];
+    dateSelect.max = datas[datas.length - 1];
+  }
 }
 
 function showHistoricalDay(dataLabel){
   viewingHistory = true;
   histBanner.classList.add('show');
+  document.getElementById('backLiveBtn').style.display = 'inline-block';
   histBanner.textContent = '📅 Vendo o dia ' + dataLabel + ' (histórico) — os valores não são editáveis aqui.';
   setValuesReadOnly(true);
   const rowsForDay = (histRowsCache || []).filter(r => r.data === dataLabel);
@@ -881,6 +887,7 @@ function showHistoricalDay(dataLabel){
 function backToLive(){
   viewingHistory = false;
   histBanner.classList.remove('show');
+  document.getElementById('backLiveBtn').style.display = 'none';
   if (autoSourceUrl){
     setValuesReadOnly(true);
     syncFromSheet();
@@ -890,11 +897,15 @@ function backToLive(){
 }
 
 dateSelect.addEventListener('change', () => {
-  if (dateSelect.value === 'hoje'){
+  if (!dateSelect.value){
     backToLive();
   } else {
     showHistoricalDay(dateSelect.value);
   }
+});
+document.getElementById('backLiveBtn').addEventListener('click', () => {
+  dateSelect.value = '';
+  backToLive();
 });
 
 const saveTimers = {};
@@ -944,7 +955,7 @@ async function loadHistory(){
 }
 
 function computeStreaksAndChampion(history, meta){
-  // history: [{date, values:[7 numeros]}], ordenado do mais antigo pro mais novo
+  // history: [{date, values:[um número por colaborador]}], ordenado do mais antigo pro mais novo
   const streaks = nomes.map(()=>0);
   const totals7 = nomes.map(()=>0);
   nomes.forEach((_, i) => {
