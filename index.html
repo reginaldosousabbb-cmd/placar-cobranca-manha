@@ -455,7 +455,7 @@
   </div>
 
   <div class="summary">
-    <div class="metric"><div class="num" id="sumBatidos">0/7</div><div class="lbl">bateram a meta</div></div>
+    <div class="metric"><div class="num" id="sumBatidos">0/13</div><div class="lbl">bateram a meta</div></div>
     <div class="metric"><div class="num" id="sumTotal">R$ 0</div><div class="lbl">negociado pela equipe</div></div>
     <div class="metric"><div class="num" id="sumPct">0%</div><div class="lbl">da meta da equipe</div></div>
   </div>
@@ -478,7 +478,7 @@
 </div>
 
 <script>
-const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Eduardo B","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B","Wanessa M"];
+const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Eduardo B","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B","Wanessa M","Ivoneide D"];
 
 // ---- CONFIGURAÇÃO DO ADMIN (só quem edita este arquivo mexe aqui) ----
 // Cole aqui o link CSV publicado da aba "Resumo por Operador" do Painel Central.
@@ -975,7 +975,7 @@ async function renderHistory(){
     let html = '<table class="history-table"><tr><th>Data</th>' + nomes.map(n=>`<th>${n.split(' ')[0]}</th>`).join('') + '</tr>';
     last7.forEach(day => {
       html += '<tr><td>' + day.date.split('-').reverse().join('/') + '</td>' +
-        day.values.map(v => `<td>${(v||0).toLocaleString('pt-BR')}</td>`).join('') + '</tr>';
+        nomes.map((_, i) => `<td>${(day.values[i]||0).toLocaleString('pt-BR')}</td>`).join('') + '</tr>';
     });
     html += '</table>';
     body.innerHTML = html;
