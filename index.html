@@ -812,30 +812,46 @@ let histRowsCache = null; // [{data, colaborador, negociado, recebido, meta, pct
 let liveInterval = null;
 let viewingHistory = false;
 
-// Converte a data do Histórico para 2026-10-13, aceitando 2026-10-13, 13/10/2026 (dia/mês)
-// ou 10/13/2026 (mês/dia, formato americano). dayFirst é detectado olhando todas as datas.
+// Converte a data do Histórico para 2026-10-13, venha ela como vier da planilha:
+// 2026-10-13, 13/10/2026, 10/13/2026 (americano), 13-10-2026, 13.10.26,
+// "13 de out. de 2026", "Oct 13, 2026", ou número de série do Sheets (46308).
+const MESES = {jan:1,fev:2,feb:2,mar:3,abr:4,apr:4,mai:5,may:5,jun:6,jul:7,ago:8,aug:8,set:9,sep:9,out:10,oct:10,nov:11,dez:12,dec:12};
+const pad2 = n => String(n).padStart(2,'0');
 function normDate(raw, dayFirst = true){
   const s = String(raw || '').trim();
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!s) return '';
+  let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+  m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
   if (m){
     const y = m[3].length === 2 ? '20' + m[3] : m[3];
     const d = dayFirst ? m[1] : m[2], mo = dayFirst ? m[2] : m[1];
-    return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    return `${y}-${pad2(mo)}-${pad2(d)}`;
   }
+  if (/^\d{5}(\.\d+)?$/.test(s)){ // número de série do Google Sheets
+    const dt = new Date(Date.UTC(1899, 11, 30) + Math.floor(parseFloat(s)) * 86400000);
+    return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth()+1)}-${pad2(dt.getUTCDate())}`;
+  }
+  const low = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const mesKey = Object.keys(MESES).find(k => new RegExp('(^|[^a-z])' + k).test(low));
+  const nums = low.match(/\d+/g) || [];
+  const ano = nums.find(n => n.length === 4);
+  const dia = nums.find(n => n.length <= 2);
+  if (mesKey && ano && dia) return `${ano}-${pad2(MESES[mesKey])}-${pad2(dia)}`;
   return s;
 }
-// Descobre se as datas com barra estão como dia/mês ou mês/dia
+// Descobre se as datas numéricas estão como dia/mês ou mês/dia
 function detectDayFirst(values){
   for (const v of values){
-    const m = String(v || '').trim().match(/^(\d{1,2})\/(\d{1,2})\//);
+    const m = String(v || '').trim().match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.]/);
     if (!m) continue;
     if (+m[1] > 12) return true;   // 13/10/2026 → dia primeiro
     if (+m[2] > 12) return false;  // 10/13/2026 → mês primeiro
   }
   return true;
 }
+const isoOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d);
+const isoToBR = d => isoOk(d) ? d.split('-').reverse().join('/') : d;
 
 async function fetchHistCSV(){
   if (!CSV_URL_HIST || !CSV_URL_HIST.startsWith('http')) return [];
@@ -851,6 +867,7 @@ async function fetchHistCSV(){
   const colabIdx = header.findIndex(c => c.trim() === 'Colaborador');
   const negIdx = header.findIndex(c => c.toLowerCase().includes('negociado'));
   const dayFirst = detectDayFirst(rows.slice(headerIdx + 1).map(row => row && row[dataIdx]));
+  histAmostra = ((rows.slice(headerIdx + 1).find(row => row && row[dataIdx]) || [])[dataIdx] || '').trim();
   const out = [];
   for (let r = headerIdx + 1; r < rows.length; r++){
     const row = rows[r];
@@ -864,37 +881,55 @@ async function fetchHistCSV(){
   return out;
 }
 
+let histErro = '';      // motivo, se não der pra ler o histórico
+let histAmostra = '';   // exemplo de data como veio da planilha (pra diagnóstico)
 async function populateDateSelect(){
   try{
     histRowsCache = await fetchHistCSV();
+    histErro = histRowsCache.length ? '' : 'a aba de histórico veio vazia ou sem a coluna "Data"';
   }catch(e){
     histRowsCache = [];
+    histErro = 'não consegui baixar o histórico (' + e.message + ')';
   }
   if (!histRowsCache || histRowsCache.length === 0) return;
   // define o intervalo do calendário com base nas datas que realmente existem no histórico
-  const datas = histRowsCache.map(r => r.data).filter(Boolean).sort();
+  const datas = histRowsCache.map(r => r.data).filter(isoOk).sort();
   if (datas.length){
     dateSelect.min = datas[0];
     dateSelect.max = datas[datas.length - 1];
+  } else {
+    histErro = 'não entendi o formato das datas do histórico (ex.: "' + histAmostra + '")';
   }
 }
 
-function showHistoricalDay(dataLabel){
+async function showHistoricalDay(dataLabel){
   viewingHistory = true;
   histBanner.classList.add('show');
   document.getElementById('backLiveBtn').style.display = 'inline-block';
-  histBanner.textContent = '📅 Vendo o dia ' + dataLabel + ' (histórico) — os valores não são editáveis aqui.';
+  histBanner.textContent = '📅 Carregando o dia ' + isoToBR(dataLabel) + '…';
   setValuesReadOnly(true);
+  // se o histórico não carregou na abertura da página, tenta de novo agora
+  if (!histRowsCache || histRowsCache.length === 0) await populateDateSelect();
+  if (!viewingHistory || dateSelect.value !== dataLabel) return; // usuário já mudou de dia ou voltou ao vivo
   const rowsForDay = (histRowsCache || []).filter(r => r.data === dataLabel);
   const byName = {};
-  rowsForDay.forEach(r => { byName[r.colaborador] = r.negociado; });
+  rowsForDay.forEach(r => { byName[r.colaborador] = (byName[r.colaborador] || 0) + r.negociado; });
   nomes.forEach((n, i) => {
     document.getElementById('val-'+i).value = byName[n] || 0;
     const el = document.getElementById('negcount-'+i);
     if (el) el.classList.remove('show');
   });
   recalc();
-  setSyncStatus(true, 'histórico — dia ' + dataLabel);
+  if (histErro){
+    histBanner.textContent = '⚠️ Histórico indisponível: ' + histErro + '.';
+    setSyncStatus(false, 'histórico com problema');
+  } else if (rowsForDay.length === 0){
+    histBanner.textContent = '📅 Não há registros no histórico para ' + isoToBR(dataLabel) + ' (histórico vai de ' + isoToBR(dateSelect.min) + ' a ' + isoToBR(dateSelect.max) + ').';
+    setSyncStatus(true, 'histórico — dia ' + isoToBR(dataLabel));
+  } else {
+    histBanner.textContent = '📅 Vendo o dia ' + isoToBR(dataLabel) + ' (histórico) — os valores não são editáveis aqui.';
+    setSyncStatus(true, 'histórico — dia ' + isoToBR(dataLabel));
+  }
 }
 
 function backToLive(){
