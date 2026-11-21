@@ -478,7 +478,7 @@
 </div>
 
 <script>
-const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Ivoneide D","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B"];
+const nomes = ["Carla R","Daiane Silva","Dayane Fernanda","Ivoneide D","Gabriela P","Jeovanna L","Joao V","Karolyny K","Lais R","Luzia M","Mariana B","Nayara"];
 
 // ---- CONFIGURAÇÃO DO ADMIN (só quem edita este arquivo mexe aqui) ----
 // Cole aqui o link CSV publicado da aba "Resumo por Operador" do Painel Central.
@@ -488,6 +488,13 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtDWGRMhofmsrM
 // Publique especificamente essa aba (Arquivo > Compartilhar > Publicar na Web > CSV).
 // Deixe como "" (vazio) que o seletor "Ver dia" fica com só a opção "Hoje", sem dar erro.
 const CSV_URL_HIST = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtDWGRMhofmsrMK8srGX2xEJMhYa-JrNBdCfV4dECK4e7xhCycs7chNMqXzuHHVsQsi4muyvQ4NpEF/pub?gid=1539714785&single=true&output=csv";
+// Colaboradores que aparecem neste placar mas cuja planilha alimenta o Painel Central de OUTRO turno.
+// O site busca só a linha dessas pessoas no CSV indicado (casando pelo nome) e junta com as demais.
+const FONTES_EXTRAS = [
+  { nomes: ["Nayara"],
+    csv:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaQGrQ3oCX3AXj0LiHcfMbKSBANM8BD2bpoICo5jbPmJZlKdI9y9_wzLmWHzDhyxCAgR88WxcnBrbb/pub?gid=1612982622&single=true&output=csv",
+    hist: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaQGrQ3oCX3AXj0LiHcfMbKSBANM8BD2bpoICo5jbPmJZlKdI9y9_wzLmWHzDhyxCAgR88WxcnBrbb/pub?gid=452237739&single=true&output=csv" }
+];
 // -----------------------------------------------------------------------
 
 const lanesEl = document.getElementById('lanes');
@@ -729,7 +736,7 @@ function parseBRNumber(raw){
   return isNaN(n) ? 0 : n;
 }
 
-async function fetchFromSheet(url){
+async function lerResumo(url){
   const bust = url.includes('?') ? '&' : '?';
   const res = await fetch(url + bust + '_t=' + Date.now());
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -758,6 +765,17 @@ async function fetchFromSheet(url){
     dataByName[name] = { val, neg };
   }
 
+  return dataByName;
+}
+
+async function fetchFromSheet(url){
+  const dataByName = await lerResumo(url);
+  for (const f of FONTES_EXTRAS){
+    try{
+      const extra = await lerResumo(f.csv);
+      f.nomes.forEach(n => { if (extra[n]) dataByName[n] = extra[n]; });
+    }catch(e){ /* se a fonte extra falhar, segue com o resto do placar */ }
+  }
   const values = [], negs = [];
   nomes.forEach(n => {
     const d = dataByName[n];
@@ -853,10 +871,10 @@ function detectDayFirst(values){
 const isoOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d);
 const isoToBR = d => isoOk(d) ? d.split('-').reverse().join('/') : d;
 
-async function fetchHistCSV(){
-  if (!CSV_URL_HIST || !CSV_URL_HIST.startsWith('http')) return [];
-  const bust = CSV_URL_HIST.includes('?') ? '&' : '?';
-  const res = await fetch(CSV_URL_HIST + bust + '_t=' + Date.now());
+async function lerHistorico(url){
+  if (!url || !url.startsWith('http')) return [];
+  const bust = url.includes('?') ? '&' : '?';
+  const res = await fetch(url + bust + '_t=' + Date.now());
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const text = await res.text();
   const rows = parseCSV(text);
@@ -878,6 +896,19 @@ async function fetchHistCSV(){
       negociado: parseBRNumber(row[negIdx])
     });
   }
+  return out;
+}
+
+async function fetchHistCSV(){
+  const out = await lerHistorico(CSV_URL_HIST);
+  const amostraPrincipal = histAmostra;
+  for (const f of FONTES_EXTRAS){
+    try{
+      const extra = await lerHistorico(f.hist);
+      extra.forEach(r => { if (f.nomes.includes(r.colaborador)) out.push(r); });
+    }catch(e){ /* histórico extra indisponível: mostra só o deste turno */ }
+  }
+  histAmostra = amostraPrincipal;
   return out;
 }
 
